@@ -1,0 +1,4 @@
+*** Starting job count test.
+server start
+--- map jobs ran incorrect number of times (9 != 8)
+--- job count test: FAIL
