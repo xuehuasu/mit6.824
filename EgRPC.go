@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/rpc"
 	"sync"
+	"time"
 )
 
 //
@@ -13,11 +14,13 @@ import (
 //
 
 type PutArgs struct {
-	Key   string
-	Value string
+	Key   int
+	Value int
 }
 
 type PutReply struct {
+	Key   int
+	Value int
 }
 
 type GetArgs struct {
@@ -32,19 +35,15 @@ type GetReply struct {
 // Client
 //
 
-func connect() *rpc.Client {
-	client, err := rpc.Dial("tcp", ":1234")
+func get(key string) string {
+	client, err := rpc.Dial("tcp", "127.0.0.1:1234")
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
-	return client
-}
 
-func get(key string) string {
-	client := connect()
-	args := GetArgs{"subject"}
+	args := GetArgs{}
 	reply := GetReply{}
-	err := client.Call("KV.Get", &args, &reply)
+	err = client.Call("KV.Get", &args, &reply)
 	if err != nil {
 		log.Fatal("error:", err)
 	}
@@ -52,14 +51,19 @@ func get(key string) string {
 	return reply.Value
 }
 
-func put(key string, val string) {
-	client := connect()
-	args := PutArgs{"subject", "6.824"}
+func put(key int, val int) {
+	client, err := rpc.Dial("tcp", "127.0.0.1:1234")
+	if err != nil {
+		log.Fatal("dialing:", err)
+	}
+
+	args := PutArgs{key, val}
 	reply := PutReply{}
-	err := client.Call("KV.Put", &args, &reply)
+	err = client.Call("KV.Put", &args, &reply)
 	if err != nil {
 		log.Fatal("error:", err)
 	}
+	fmt.Print(reply.Value)
 	client.Close()
 }
 
@@ -68,18 +72,21 @@ func put(key string, val string) {
 //
 
 type KV struct {
-	mu   sync.Mutex
-	data map[string]string
+	mu sync.Mutex
+	// data map[string]string
+	data int
 }
 
-func server() {
-	kv := &KV{data: map[string]string{}}
+func server() *KV {
+	// kv := &KV{data: map[string]string{}}
+	kv := &KV{}
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
 	l, e := net.Listen("tcp", ":1234")
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
+
 	go func() {
 		for {
 			conn, err := l.Accept()
@@ -91,13 +98,14 @@ func server() {
 		}
 		l.Close()
 	}()
+	return kv
 }
 
 func (kv *KV) Get(args *GetArgs, reply *GetReply) error {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
-	reply.Value = kv.data[args.Key]
+	// reply.Value = kv.data[args.Key]
 
 	return nil
 }
@@ -106,7 +114,10 @@ func (kv *KV) Put(args *PutArgs, reply *PutReply) error {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
-	kv.data[args.Key] = args.Value
+	// kv.data[args.Key] = args.Value
+	kv.data = args.Value
+	reply.Value = args.Value
+	reply.Key = reply.Key
 
 	return nil
 }
@@ -117,8 +128,12 @@ func (kv *KV) Put(args *PutArgs, reply *PutReply) error {
 
 func main() {
 	server()
-
-	put("subject", "6.5840")
-	fmt.Printf("Put(subject, 6.5840) done\n")
-	fmt.Printf("get(subject) -> %s\n", get("subject"))
+	// time.Sleep(100 * time.Second)
+	// put("subject", "6.5840")
+	// fmt.Printf("Put(subject, 6.5840) done\n")
+	// fmt.Printf("get(subject) -> %s\n", get("subject"))
+	for i := 0; i < 100; i++ {
+		put(i, i+1)
+		time.Sleep(2 * time.Second)
+	}
 }

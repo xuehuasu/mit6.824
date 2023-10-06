@@ -1,4 +1,4 @@
-# !/usr/bin/env bash
+#!/usr/bin/env bash
 
 #
 # basic map-reduce test
@@ -30,18 +30,17 @@ rm -f mr-*
 
 failed_any=0
 
-# #########################################################
+#########################################################
 # first word-count
 
 # generate the correct output
-../mrsequential ../../mrapps/wc.so ../pg-*txt || exit 1
-
+../mrsequential ../../mrapps/wc.so ../pg*txt || exit 1
 sort mr-out-0 > mr-correct-wc.txt
 rm -f mr-out*
 
 echo '***' Starting wc test.
 
-timeout -k 2s 180s ../mrcoordinator ../pg-*txt &
+timeout -k 2s 180s ../mrcoordinator ../pg*txt &
 pid=$!
 
 # give the coordinator time to create the sockets.
@@ -167,8 +166,7 @@ timeout -k 2s 180s ../mrworker ../../mrapps/jobcount.so
 timeout -k 2s 180s ../mrworker ../../mrapps/jobcount.so &
 timeout -k 2s 180s ../mrworker ../../mrapps/jobcount.so
 
-# NT=`cat mr-out* | awk '{print $2}'`
-NT=$(awk '{print $2}' mr-out*)
+NT=`cat mr-out* | awk '{print $2}'`
 if [ "$NT" -ne "8" ]
 then
   echo '---' map jobs ran incorrect number of times "($NT != 8)"

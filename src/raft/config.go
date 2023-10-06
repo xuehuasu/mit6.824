@@ -8,19 +8,23 @@ package raft
 // test with the original before submitting.
 //
 
-import "6.824/labgob"
-import "6.824/labrpc"
-import "bytes"
-import "log"
-import "sync"
-import "testing"
-import "runtime"
-import "math/rand"
-import crand "crypto/rand"
-import "math/big"
-import "encoding/base64"
-import "time"
-import "fmt"
+import (
+	"bytes"
+	"log"
+	"math/rand"
+	"runtime"
+	"sync"
+	"testing"
+
+	"6.824/labgob"
+	"6.824/labrpc"
+
+	crand "crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"math/big"
+	"time"
+)
 
 func randstring(n int) string {
 	b := make([]byte, 2*n)
@@ -166,7 +170,7 @@ func (cfg *config) applier(i int, applyCh chan ApplyMsg) {
 				err_msg = fmt.Sprintf("server %v apply out of order %v", i, m.CommandIndex)
 			}
 			if err_msg != "" {
-				log.Fatalf("apply error: %v\n", err_msg)
+				log.Fatalf("1-apply error: %v\n", err_msg)
 				cfg.applyErr[i] = err_msg
 				// keep reading after error so that Raft doesn't block
 				// holding locks...
@@ -206,7 +210,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 				err_msg = fmt.Sprintf("server %v apply out of order %v", i, m.CommandIndex)
 			}
 			if err_msg != "" {
-				log.Fatalf("apply error: %v\n", err_msg)
+				log.Fatalf("2-apply error: %v\n", err_msg)
 				cfg.applyErr[i] = err_msg
 				// keep reading after error so that Raft doesn't block
 				// holding locks...
@@ -230,13 +234,18 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 	}
 }
 
-//
 // start or re-start a Raft.
 // if one already exists, "kill" it first.
 // allocate new outgoing port file names, and a new
 // state persister, to isolate previous instance of
 // this server. since we cannot really kill it.
-//
+// 翻译：
+// 启动或重新启动Raft。
+// 如果已经存在一个，则首先“杀死”它。
+// 分配新的传出端口文件名和新的
+// 状态持久化程序，以隔离先前的实例
+// 这个服务器。因为我们不能真的杀了它。
+
 func (cfg *config) start1(i int, applier func(int, chan ApplyMsg)) {
 	cfg.crash1(i)
 
@@ -536,13 +545,13 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 				time.Sleep(20 * time.Millisecond)
 			}
 			if retry == false {
-				cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
+				cfg.t.Fatalf("one(%v) failed to reach agreement-1", cmd)
 			}
 		} else {
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
-	cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
+	cfg.t.Fatalf("one(%v) failed to reach agreement-2", cmd)
 	return -1
 }
 

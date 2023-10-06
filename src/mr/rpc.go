@@ -9,6 +9,7 @@ package mr
 import (
 	"os"
 	"strconv"
+	"time"
 )
 
 //
@@ -19,30 +20,27 @@ import (
 // Add your RPC definitions here.
 
 type MapArgs struct {
-	addr       string // worker地址
-	port       int    // worker端口
-	taskid     int
-	tasktype   string
-	outputfile map[int]bool
+	Addr       string // worker地址
+	Port       int    // worker端口
+	Taskid     int
+	Tasktype   string
+	Outputfile map[int]string
 }
 
 type MapReply struct {
-	isNull     bool
-	taskid     int
-	inputfiles string
-	nReduce    int
+	Taskid     int
+	Inputfiles string
+	NReduce    int
+	Timeout    time.Duration
 }
 
 type ReduceArgs MapArgs
 
 type ReduceReply struct {
-	isNull     bool
-	taskid     int
-	inputfiles []int
-	outputfile string
-	nReduce    int
-	addr       string // map worker地址
-	port       int    // map worker端口
+	Taskid     int
+	Inputfiles []string
+	Outputfile string
+	Timeout    time.Duration
 }
 
 // Cook up a unique-ish UNIX-domain socket name
