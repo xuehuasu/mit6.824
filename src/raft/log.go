@@ -41,8 +41,12 @@ func (log *Log) setEntry(index int, entry Entry) {
 	}
 }
 
-func (log *Log) cutEntryToEnd(index int) {
-	log.Entries = log.Entries[:index-log.Index0]
+func (log *Log) cutEntryToIndex(index int) []Entry {
+	return log.Entries[:index-log.Index0]
+}
+
+func (log *Log) cutEntryToEnd(index int) []Entry {
+	return log.Entries[index-log.Index0:]
 }
 
 func (log *Log) getTerm(index int) int {

@@ -196,7 +196,9 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) { // 返回的是当
 	isLeader = (rf.state == Leader)
 
 	if isLeader {
-		go rf.appendLog(command)
+		rf.log.append(Entry{rf.currentTerm, command})
+
+		DPrintf(true, "appendLog lock: %d log: %v\n", rf.me, rf.log)
 	}
 
 	return index, term, isLeader
@@ -205,28 +207,20 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) { // 返回的是当
 func (rf *Raft) commitLog() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-
-	for i := rf.lastApplied + 1; i <= rf.commitIndex; i++ {
+	i := rf.lastApplied + 1
+	for i <= rf.commitIndex {
 		apply := ApplyMsg{
 			CommandValid: true,
 			Command:      rf.log.getEntry(i).Command,
 			CommandIndex: i,
 		}
 		DPrintf(true, "commitLog lock: %d, apply: %v\n", rf.me, apply)
+		rf.mu.Unlock()
 		rf.applyCh <- apply
+		rf.mu.Lock()
+		i++
 	}
 	rf.lastApplied = rf.commitIndex
-}
-
-func (rf *Raft) appendLog(command interface{}) {
-	rf.mu.Lock()
-	rf.log.append(Entry{rf.currentTerm, command})
-
-	DPrintf(true, "appendLog lock: %d log: %v\n", rf.me, rf.log)
-	rf.persist() // ? 这里需要持久化吗
-
-	rf.sendMsgToAllL() // 发送心跳同步日志
-	rf.mu.Unlock()
 }
 
 // the tester doesn't halt goroutines created by Raft after each test,
@@ -253,7 +247,7 @@ func (rf *Raft) killed() bool {
 func (rf *Raft) ticker() {
 	for rf.killed() == false {
 		rf.mu.Lock()
-		DPrintf(true, "ticker lock: %d\n", rf.me)
+		DPrintf(true, "ticker lock: %d log: %v\n", rf.me, rf.log)
 
 		if rf.state == Leader {
 			rf.sendMsgToAllL() // 发送心跳

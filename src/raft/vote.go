@@ -73,7 +73,7 @@ func (rf *Raft) sendVote(server int, args *RequestVoteArgs, votes *int) {
 					go rf.sendMsgToAll()
 				}
 				rf.state = Leader
-				DPrintf(true, "VoteResult: leader is %d, log: %v\n", rf.me, rf.log)
+				DPrintf(true, "VoteResult: leader is %d, log: %v Term: %d\n", rf.me, rf.log, rf.currentTerm)
 			}
 		}
 	} else {
@@ -115,12 +115,10 @@ func (rf *Raft) sendMsgToAllL() {
 			LeaderId:     rf.me,
 			PrevLogIndex: rf.nextIndex[i] - 1,
 			PrevLogTerm:  rf.log.getTerm(rf.nextIndex[i] - 1),
-			Entries:      make([]Entry, 0),
+			Entries:      make([]Entry, rf.log.endIndex()-rf.nextIndex[i]),
 			LeaderCommit: rf.lastApplied,
 		}
-		for j := rf.nextIndex[i]; j < rf.log.endIndex(); j++ {
-			args.Entries = append(args.Entries, rf.log.getEntry(j))
-		}
+		copy(args.Entries, rf.log.cutEntryToEnd(rf.nextIndex[i]))
 		go rf.sendMsg(i, &args)
 	}
 }
@@ -132,14 +130,15 @@ func (rf *Raft) sendMsg(server int, args *AppendEntriesArgs) {
 	if ok {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
-		DPrintf(true, "sendMsg lock: %d %d reply: %v\n", rf.me, server, reply)
+		DPrintf(true, "sendMsg lock: %d %d args: %v, reply: %v\n", rf.me, server, args, reply)
 		if reply.Term > rf.currentTerm { // 此时它不再是leader，将会新一轮选举将会在下次心跳开始
 			rf.currentTerm = reply.Term
 			rf.state = Follower
 			rf.votedFor = -1
 		} else if reply.Success {
-			rf.nextIndex[server] = rf.log.endIndex()
-			rf.matchIndex[server] = rf.log.endIndex() - 1
+			rf.nextIndex[server] = args.PrevLogIndex + len(args.Entries) + 1
+			rf.matchIndex[server] = rf.nextIndex[server] - 1
+
 			DPrintf(len(args.Entries) != 0, "sendMsg: %d to %d success matchIndex: %d commitIndex: %d \n", rf.me, server, rf.matchIndex[server], rf.commitIndex)
 			// 更新commitIndex
 			if rf.matchIndex[server] > rf.commitIndex && rf.log.getTerm(rf.matchIndex[server]) == rf.currentTerm { // 只能提交当前任期
@@ -188,19 +187,27 @@ func (rf *Raft) AppendEntry(args *AppendEntriesArgs, reply *AppendEntriesReply) 
 		if myTerm != args.PrevLogTerm {
 			reply.Success = false
 		} else {
-			myIndex := args.PrevLogIndex
-			for i, j := 0, myIndex+1; i < len(args.Entries); i++ { // 发送来的是逆序日志
-				rf.log.setEntry(j, args.Entries[i])
-				j++
-			}
-			rf.log.cutEntryToEnd(myIndex + len(args.Entries) + 1)
-			reply.Success = true
-			DPrintf(len(args.Entries) != 0, "AppendEntry log: %d rf.log: %v args: %v\n", rf.me, rf.log, args)
 			// 更新commitIndex
 			if args.LeaderCommit > rf.commitIndex {
 				rf.commitIndex = args.LeaderCommit
 				go rf.commitLog()
 			}
+			// 更新日志
+			// if len(args.Entries) == 0 {
+			// 	reply.Success = true
+			// 	return
+			// }
+
+			myIndex := args.PrevLogIndex
+
+			for i, j := 0, myIndex+1; i < len(args.Entries); i++ {
+				rf.log.setEntry(j, args.Entries[i])
+				j++
+			}
+			rf.log.Entries = rf.log.cutEntryToIndex(myIndex + len(args.Entries) + 1) //[:idx]
+			reply.Success = true
+			DPrintf(len(args.Entries) != 0, "AppendEntry log: %d rf.log: %v args: %v\n", rf.me, rf.log, args)
+
 		}
 	}
 
