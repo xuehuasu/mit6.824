@@ -150,7 +150,7 @@ func (cfg *config) checkLogs(i int, m ApplyMsg) (string, bool) {
 	}
 	_, prevok := cfg.logs[i][m.CommandIndex-1]
 	cfg.logs[i][m.CommandIndex] = v
-	DPrintf(true, "set logs cfg.logs[%d][%d] = %v\n", i, m.CommandIndex, v)
+	// DPrintf(true, "set logs cfg.logs[%d][%d] = %v\n", i, m.CommandIndex, v)
 	if m.CommandIndex > cfg.maxIndex {
 		cfg.maxIndex = m.CommandIndex
 	}
@@ -164,7 +164,7 @@ func (cfg *config) applier(i int, applyCh chan ApplyMsg) {
 		if m.CommandValid == false {
 			// ignore other types of ApplyMsg
 		} else {
-			DPrintf(true, "server recv %v %v %v\n", m.CommandValid, m.CommandIndex, m.Command)
+			// DPrintf(true, "server recv %v %v %v\n", m.CommandValid, m.CommandIndex, m.Command)
 			cfg.mu.Lock()
 			err_msg, prevok := cfg.checkLogs(i, m)
 			cfg.mu.Unlock()

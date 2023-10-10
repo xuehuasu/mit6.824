@@ -46,6 +46,9 @@ func (log *Log) cutEntryToIndex(index int) []Entry {
 }
 
 func (log *Log) cutEntryToEnd(index int) []Entry {
+	if index < log.Index0 {
+		return log.Entries
+	}
 	return log.Entries[index-log.Index0:]
 }
 

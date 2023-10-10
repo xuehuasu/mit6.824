@@ -22,7 +22,6 @@ package raft
 //   开始在日志中达成一致
 // rf.GetState() (term, isLeader)
 //   询问Raft当前的任期，以及它是否认为自己是领导者
-// ApplyMsg
 //   每当一个新的日志条目被提交到日志中，每个Raft节点都应该向服务（或测试程序）发送一个ApplyMsg
 //   在同一个服务器中。
 //
@@ -30,11 +29,15 @@ package raft
 import (
 	//	"bytes"
 
+	"bytes"
+	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	//	"6.824/labgob"
+	"6.824/labgob"
 	"6.824/labrpc"
 )
 
@@ -84,14 +87,18 @@ func (rf *Raft) GetState() (int, bool) {
 // where it can later be retrieved after a crash and restart.
 // see paper's Figure 2 for a description of what should be persistent.
 func (rf *Raft) persist() {
-	// Your code here (2C).
-	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	e.Encode(rf.commitIndex)
+	e.Encode(rf.lastApplied)
+	e.Encode(rf.nextIndex)
+	e.Encode(rf.matchIndex)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
+	DPrintf(true, "persist: %d currentTerm: %d votedFor: %d log: %v commitIndex: %d lastApplied: %d nextIndex: %v matchIndex: %v\n", rf.me, rf.currentTerm, rf.votedFor, rf.log.cutEntryToEnd(rf.log.endIndex()-2), rf.commitIndex, rf.lastApplied, rf.nextIndex, rf.matchIndex)
 }
 
 // restore previously persisted state.
@@ -99,19 +106,30 @@ func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
-	// Your code here (2C).
-	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var votedFor int
+	var log Log
+	var commitIndex int
+	var lastApplied int
+	var nextIndex []int
+	var matchIndex []int
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil || d.Decode(&commitIndex) != nil || d.Decode(&lastApplied) != nil || d.Decode(&nextIndex) != nil || d.Decode(&matchIndex) != nil {
+		fmt.Printf("error readPersist: %d\n", rf.me)
+	} else {
+		rf.currentTerm = currentTerm
+		rf.votedFor = votedFor
+		rf.log = log
+		rf.commitIndex = commitIndex
+		rf.lastApplied = lastApplied
+		rf.nextIndex = nextIndex
+		rf.matchIndex = matchIndex
+		rf.state = Candidate
+		DPrintf(true, "readPersist: %d currentTerm: %d votedFor: %d log: %v commitIndex: %d lastApplied: %d nextIndex: %v matchIndex: %v\n", rf.me, rf.currentTerm, rf.votedFor, rf.log.cutEntryToEnd(rf.log.endIndex()-2), rf.commitIndex, rf.lastApplied, rf.nextIndex, rf.matchIndex)
+	}
 }
 
 // A service wants to switch to snapshot.  Only do so if Raft hasn't
@@ -130,39 +148,6 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
 
-}
-
-// example RequestVote RPC handler.
-func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	// Your code here (2A, 2B).
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	DPrintf(true, "RPC RequestVote lock: %d\n", rf.me)
-	if args.Term > rf.currentTerm {
-		rf.currentTerm = args.Term
-		rf.votedFor = -1
-		rf.state = Follower
-	}
-	myLastIndex := rf.log.endIndex() - 1
-	myLastTerm := rf.log.lastTerm()
-	if args.Term < rf.currentTerm {
-		reply.VoteGranted = false
-	} else if rf.votedFor == -1 || rf.votedFor == args.CandidateId { // 没有投票或者已经投票给了当前节点
-		if args.LastLogTerm > myLastTerm || (args.LastLogTerm == myLastTerm && args.LastLogIndex >= myLastIndex) {
-			reply.VoteGranted = true
-			rf.votedFor = args.CandidateId
-			rf.persist()
-		} else {
-			reply.VoteGranted = false
-		}
-	} else {
-		reply.VoteGranted = false
-
-	}
-	reply.Term = rf.currentTerm
-	rf.setElectiontime()
-
-	DPrintf(true, "RPC RequestVote: %d, args: %v, reply: %v\n", rf.me, args, reply)
 }
 
 // the service using Raft (e.g. a k/v server) wants to start
@@ -197,7 +182,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) { // 返回的是当
 
 	if isLeader {
 		rf.log.append(Entry{rf.currentTerm, command})
-
 		DPrintf(true, "appendLog lock: %d log: %v\n", rf.me, rf.log)
 	}
 
@@ -265,9 +249,15 @@ func (rf *Raft) ticker() {
 			rf.setElectiontime()
 		}
 		rf.mu.Unlock()
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(80 * time.Millisecond)
 	}
 	DPrintf(true, "exit: %d\n", rf.me)
+}
+
+func (rf *Raft) setElectiontime() {
+	t := time.Now()
+    t = t.Add(time.Duration(300+rand.Intn(250)) * time.Millisecond)
+	rf.electiontime = t
 }
 
 // the service or tester wants to create a Raft server. the ports
