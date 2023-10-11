@@ -64,6 +64,7 @@ func (rf *Raft) sendVote(server int, args *RequestVoteArgs, votes *int) {
 			rf.currentTerm = reply.Term
 			rf.state = Follower
 			rf.persist()
+			return
 		}
 
 		if reply.VoteGranted {
@@ -135,7 +136,7 @@ func (rf *Raft) sendMsg(server int, args *AppendEntriesArgs) {
 			return
 		}
 		DPrintf(true, "sendMsg lock: %d %d args: %v, reply: %v\n", rf.me, server, args, reply)
-		if reply.Term > rf.currentTerm { // 此时它不再是leader，将会新一轮选举将会在下次心跳开始
+		if reply.Term > rf.currentTerm { // 此时它不再是leader，新一轮选举将会在下次心跳开始
 			rf.currentTerm = reply.Term
 			rf.state = Follower
 			rf.votedFor = -1
@@ -161,13 +162,14 @@ func (rf *Raft) sendMsg(server int, args *AppendEntriesArgs) {
 					go rf.commitLog()
 				}
 			}
-
-			rf.persist()
 		} else {
-			for rf.nextIndex[server] > 0 && rf.log.getTerm(rf.nextIndex[server]-1) == args.PrevLogTerm {
+			if rf.nextIndex[server] == rf.log.Index0 {
+
+			}
+
+			for rf.nextIndex[server] > rf.log.Index0 && rf.log.getTerm(rf.nextIndex[server]-1) == args.PrevLogTerm {
 				rf.nextIndex[server]--
 			}
-			rf.persist()
 		}
 	} else {
 		rf.mu.Lock()
@@ -181,14 +183,11 @@ func (rf *Raft) AppendEntry(args *AppendEntriesArgs, reply *AppendEntriesReply) 
 	defer rf.mu.Unlock()
 	DPrintf(true, "AppendEntry lock: %d args: %v\n", rf.me, args)
 
-	rf.setElectiontime()
 	reply.Success = true
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.Success = false
 	} else {
-		rf.state = Follower
-		rf.currentTerm = args.Term
 		// 同步日志
 		myTerm := rf.log.getTerm(args.PrevLogIndex)
 		if myTerm != args.PrevLogTerm {
@@ -205,11 +204,13 @@ func (rf *Raft) AppendEntry(args *AppendEntriesArgs, reply *AppendEntriesReply) 
 				rf.log.setEntry(j, args.Entries[i])
 				j++
 			}
-			rf.log.Entries = rf.log.cutEntryToIndex(myIndex + len(args.Entries) + 1) //[:idx]
+			if rf.log.endIndex() > myIndex+len(args.Entries)+1 {
+				rf.log.Entries = rf.log.cutEntryToIndex(myIndex + len(args.Entries) + 1) //[:idx]
+				rf.persist()
+			}
 			reply.Success = true
 			DPrintf(len(args.Entries) != 0, "AppendEntry log: %d rf.log: %v args: %v\n", rf.me, rf.log, args)
 		}
-		rf.persist()
 	}
 
 	rf.setElectiontime()
@@ -229,6 +230,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.currentTerm = args.Term
 		rf.state = Follower
 		rf.votedFor = -1
+		rf.persist()
 	}
 	myLastIndex := rf.log.endIndex() - 1
 	myLastTerm := rf.log.lastTerm()
@@ -238,13 +240,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		if args.LastLogTerm > myLastTerm || (args.LastLogTerm == myLastTerm && args.LastLogIndex >= myLastIndex) {
 			reply.VoteGranted = true
 			rf.votedFor = args.CandidateId
+			rf.persist()
 		} else {
 			reply.VoteGranted = false
 		}
 	} else {
 		reply.VoteGranted = false
 	}
-	rf.persist()
 	reply.Term = rf.currentTerm
 	rf.setElectiontime()
 	DPrintf(true, "RPC RequestVote: %d, args: %v, reply: %v\n", rf.me, args, reply)

@@ -27,8 +27,6 @@ package raft
 //
 
 import (
-	//	"bytes"
-
 	"bytes"
 	"fmt"
 	"math/rand"
@@ -36,7 +34,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	//	"6.824/labgob"
 	"6.824/labgob"
 	"6.824/labrpc"
 )
@@ -68,6 +65,8 @@ type Raft struct {
 
 	nextIndex  []int // 每个节点的日志索引
 	matchIndex []int // 每个节点已经复制的日志索引
+
+	snapshot []byte
 }
 
 // return currentTerm and whether this server
@@ -94,8 +93,7 @@ func (rf *Raft) persist() {
 	e.Encode(rf.log)
 	e.Encode(rf.commitIndex)
 	e.Encode(rf.lastApplied)
-	e.Encode(rf.nextIndex)
-	e.Encode(rf.matchIndex)
+	e.Encode(rf.snapshot)
 	data := w.Bytes()
 	rf.persister.SaveRaftState(data)
 	DPrintf(true, "persist: %d currentTerm: %d votedFor: %d log: %v commitIndex: %d lastApplied: %d nextIndex: %v matchIndex: %v\n", rf.me, rf.currentTerm, rf.votedFor, rf.log.cutEntryToEnd(rf.log.endIndex()-2), rf.commitIndex, rf.lastApplied, rf.nextIndex, rf.matchIndex)
@@ -115,9 +113,11 @@ func (rf *Raft) readPersist(data []byte) {
 	var log Log
 	var commitIndex int
 	var lastApplied int
-	var nextIndex []int
-	var matchIndex []int
-	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil || d.Decode(&commitIndex) != nil || d.Decode(&lastApplied) != nil || d.Decode(&nextIndex) != nil || d.Decode(&matchIndex) != nil {
+	var snapshot []byte
+
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil ||
+		d.Decode(&commitIndex) != nil || d.Decode(&lastApplied) != nil ||
+		d.Decode(&snapshot) != nil {
 		fmt.Printf("error readPersist: %d\n", rf.me)
 	} else {
 		rf.currentTerm = currentTerm
@@ -125,9 +125,8 @@ func (rf *Raft) readPersist(data []byte) {
 		rf.log = log
 		rf.commitIndex = commitIndex
 		rf.lastApplied = lastApplied
-		rf.nextIndex = nextIndex
-		rf.matchIndex = matchIndex
 		rf.state = Candidate
+		rf.snapshot = snapshot
 		DPrintf(true, "readPersist: %d currentTerm: %d votedFor: %d log: %v commitIndex: %d lastApplied: %d nextIndex: %v matchIndex: %v\n", rf.me, rf.currentTerm, rf.votedFor, rf.log.cutEntryToEnd(rf.log.endIndex()-2), rf.commitIndex, rf.lastApplied, rf.nextIndex, rf.matchIndex)
 	}
 }
@@ -182,6 +181,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) { // 返回的是当
 
 	if isLeader {
 		rf.log.append(Entry{rf.currentTerm, command})
+		rf.persist()
 		DPrintf(true, "appendLog lock: %d log: %v\n", rf.me, rf.log)
 	}
 
@@ -205,6 +205,7 @@ func (rf *Raft) commitLog() {
 		i++
 	}
 	rf.lastApplied = rf.commitIndex
+	rf.persist()
 }
 
 // the tester doesn't halt goroutines created by Raft after each test,
@@ -256,8 +257,38 @@ func (rf *Raft) ticker() {
 
 func (rf *Raft) setElectiontime() {
 	t := time.Now()
-    t = t.Add(time.Duration(300+rand.Intn(250)) * time.Millisecond)
+	t = t.Add(time.Duration(300+rand.Intn(250)) * time.Millisecond)
 	rf.electiontime = t
+}
+
+func (rf *Raft) snapShot() { // 提交快照
+	for rf.killed() == false {
+		rf.mu.Lock()
+		// 先判断当前快照是否有必要创建
+		for rf.log.offset() == rf.lastApplied {
+			time.Sleep(10 * time.Second)
+		}
+
+		// 填充快照消息
+		apply := ApplyMsg{
+			SnapshotValid: true,
+			SnapshotTerm:  rf.log.getTerm(rf.lastApplied),
+			SnapshotIndex: rf.lastApplied,
+		}
+		apply.Snapshot = rf.log.coding(rf.log.cutEntryToIndex(rf.lastApplied + 1))
+
+		// 缓存快照
+		rf.snapshot = apply.Snapshot
+
+		// 删除快照之前的日志，这里有一处细节，创建快照后，日志从lastApplied+1开始，多保留一位，用于记录快照的索引和任期
+		rf.log.Index0 = rf.lastApplied
+		rf.log.Entries = rf.log.cutEntryToEnd(rf.lastApplied)
+
+		// 发送
+		rf.mu.Unlock()
+		rf.applyCh <- apply
+		time.Sleep(10 * time.Second)
+	}
 }
 
 // the service or tester wants to create a Raft server. the ports
@@ -301,6 +332,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
+
+	// go rf.snapShot()
 
 	return rf
 }
