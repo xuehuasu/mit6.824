@@ -101,7 +101,7 @@ func (rf *Raft) persist() {
 	data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
 	rf.persister.SaveStateAndSnapshot(data, rf.snapshot)
-	//DPrintf(false, "persist: %d currentTerm: %d votedFor: %d log: %v commitIndex: %d lastApplied: %d nextIndex: %v matchIndex: %v\n", rf.me, rf.currentTerm, rf.votedFor, rf.log.cutEntryToEnd(rf.log.endIndex()-2), rf.commitIndex, rf.lastApplied, rf.nextIndex, rf.matchIndex)
+	DPrintf(true, "persist: %d currentTerm: %d votedFor: %d log: %v commitIndex: %d lastApplied: %d nextIndex: %v matchIndex: %v\n", rf.me, rf.currentTerm, rf.votedFor, rf.log.cutEntryToEnd(rf.log.endIndex()-2), rf.commitIndex, rf.lastApplied, rf.nextIndex, rf.matchIndex)
 }
 
 // restore previously persisted state.
@@ -109,8 +109,6 @@ func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
 	r := bytes.NewBuffer(data)
 	d := labgob.NewDecoder(r)
 	var currentTerm int
@@ -126,6 +124,8 @@ func (rf *Raft) readPersist(data []byte) {
 		d.Decode(&lastIncludedIndex) != nil || d.Decode(&lastIncludedTerm) != nil {
 		fmt.Printf("error readPersist: %d\n", rf.me)
 	} else {
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
 		rf.currentTerm = currentTerm
 		rf.votedFor = votedFor
 		rf.log = log
@@ -136,7 +136,7 @@ func (rf *Raft) readPersist(data []byte) {
 		rf.snapshot = rf.persister.ReadSnapshot()
 		rf.lastIncludedIndex = lastIncludedIndex
 		rf.lastIncludedTerm = lastIncludedTerm
-		//DPrintf(false, "readPersist: %d currentTerm: %d votedFor: %d log: %v commitIndex: %d lastApplied: %d nextIndex: %v matchIndex: %v\n", rf.me, rf.currentTerm, rf.votedFor, rf.log.cutEntryToEnd(rf.log.endIndex()-2), rf.commitIndex, rf.lastApplied, rf.nextIndex, rf.matchIndex)
+		DPrintf(true, "readPersist: %d currentTerm: %d votedFor: %d log: %v commitIndex: %d lastApplied: %d nextIndex: %v matchIndex: %v\n", rf.me, rf.currentTerm, rf.votedFor, rf.log.cutEntryToEnd(rf.log.endIndex()-2), rf.commitIndex, rf.lastApplied, rf.nextIndex, rf.matchIndex)
 	}
 }
 
@@ -145,7 +145,7 @@ func (rf *Raft) readPersist(data []byte) {
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 	// Your code here (2D).
 	rf.mu.Lock()
-	//DPrintf(false, "CondInstallSnapshot lock: %d lastIncludedTerm %d me %d lastIncludedIndex %d me %d\n", rf.me, lastIncludedTerm, rf.lastIncludedTerm, lastIncludedIndex, rf.lastIncludedIndex)
+	DPrintf(true, "CondInstallSnapshot lock: %d lastIncludedTerm %d me %d lastIncludedIndex %d me %d\n", rf.me, lastIncludedTerm, rf.lastIncludedTerm, lastIncludedIndex, rf.lastIncludedIndex)
 	if lastIncludedIndex >= rf.lastIncludedIndex {
 		rf.lastIncludedIndex = lastIncludedIndex
 		rf.lastIncludedTerm = lastIncludedTerm
@@ -173,7 +173,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	//DPrintf(false, "Snapshot lock: %d index %d\n", rf.me, index)
+	DPrintf(true, "Snapshot lock: %d index %d\n", rf.me, index)
 	rf.lastIncludedIndex = index
 	rf.lastIncludedTerm = rf.log.getTerm(index)
 	rf.snapshot = snapshot
@@ -209,7 +209,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) { // 返回的是当
 	// Your code here (2B).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	// //DPrintf(false, "Start lock: %d\n", rf.me)
+	DPrintf(false, "Start lock: %d\n", rf.me)
 
 	index = rf.log.endIndex()
 	term = rf.currentTerm
@@ -218,7 +218,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) { // 返回的是当
 	if isLeader {
 		rf.log.append(Entry{rf.currentTerm, command})
 		rf.persist()
-		//DPrintf(false, "appendLog lock: %d index: %d log: %v\n", rf.me, index, rf.log)
+		DPrintf(true, "appendLog lock: %d index: %d log: %v\n", rf.me, index, rf.log)
 	}
 	return index, term, isLeader
 }
@@ -236,7 +236,7 @@ func (rf *Raft) commitLog() {
 			Command:      rf.log.getEntry(i).Command,
 			CommandIndex: i,
 		}
-		//DPrintf(false, "commitLog lock: %d, apply: %v\n", rf.me, apply)
+		DPrintf(true, "commitLog lock: %d, apply: %v\n", rf.me, apply)
 		rf.mu.Unlock()
 		rf.applyCh <- apply
 		rf.mu.Lock()
@@ -269,7 +269,7 @@ func (rf *Raft) killed() bool {
 func (rf *Raft) ticker() {
 	for rf.killed() == false {
 		rf.mu.Lock()
-		//DPrintf(false, "ticker lock: %d log: %v Term: %d\n", rf.me, rf.log, rf.currentTerm)
+		DPrintf(true, "ticker lock: %d log: %v Term: %d\n", rf.me, rf.log, rf.currentTerm)
 
 		if rf.state == Leader {
 			rf.sendMsgToAllL() // 发送心跳
@@ -277,7 +277,7 @@ func (rf *Raft) ticker() {
 		}
 		if time.Now().After(rf.electiontime) {
 			// 开始选举
-			//DPrintf(false, "startElection: %d\n", rf.me)
+			DPrintf(true, "startElection: %d\n", rf.me)
 			rf.currentTerm += 1
 			rf.state = Candidate
 			rf.votedFor = rf.me
@@ -289,12 +289,12 @@ func (rf *Raft) ticker() {
 		rf.mu.Unlock()
 		time.Sleep(50 * time.Millisecond)
 	}
-	//DPrintf(false, "exit: %d\n", rf.me)
+	DPrintf(true, "exit: %d\n", rf.me)
 }
 
 func (rf *Raft) setElectiontime() {
 	t := time.Now()
-	t = t.Add(time.Duration(150+rand.Intn(150)) * time.Millisecond)
+	t = t.Add(time.Duration(rand.Int63()%300+150) * time.Millisecond)
 	rf.electiontime = t
 }
 

@@ -13,15 +13,14 @@ result() {
 }  
 trap result SIGINT 
 
-filename="out/allTestOutput.log"
-rm filename
 i=1
 for ((; i<=3000; i++))  
 do  
     s_time=$(date +%s)
-    echo "Running test ${test} iteration $i..."  
+    echo "Running test all iteration $i..."  
+    filename="out/allTestOutput${i}.log"
     
-    go test -race >> ${filename} &
+    go test -race > ${filename} &
     wait # 等待上一个命令结束 
     e_time=$(date +%s)
     run_time=$((e_time - s_time))
@@ -36,6 +35,7 @@ do
         echo "--- FAIL "${i}" time: ${run_time}s"
     else
         echo "PASS "${i}" time: ${run_time}s"
+        rm -rf ${filename}
     fi
 done
 

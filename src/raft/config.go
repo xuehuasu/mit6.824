@@ -203,7 +203,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 			}
 			cfg.mu.Unlock()
 		} else if m.CommandValid && m.CommandIndex > lastApplied {
-			//DPrintf(false, "server %d apply %v lastApplied %v\n", i, m.CommandIndex, lastApplied)
+			DPrintf(true, "server %d apply %v lastApplied %v\n", i, m.CommandIndex, lastApplied)
 			cfg.mu.Lock()
 			err_msg, prevok := cfg.checkLogs(i, m)
 			cfg.mu.Unlock()
