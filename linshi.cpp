@@ -4,42 +4,50 @@
 #include <cstring>
 using namespace std;
 
-template <class Input>
 class A {
 public:
-    virtual bool Foo(Input input) = 0;
+    A(){}
+    // 拷贝构造
+    A(const A& a) {
+        cout << "拷贝构造" << endl;
+    }
+    A& operator=(const A& a) {
+        cout << "拷贝赋值" << endl;
+        return *this;
+    }
+    A func() {
+        cout << "func" << endl;
+        return *this;
+    }
+    // 重载<<
+    friend ostream& operator<<(ostream& os, const A& a) {
+        os << "重载<<" << endl;
+        return os;
+    }
 };
-
-class B : public A<int> {
+class B
+{
+private:
+    /* data */
 public:
-    bool Foo(int input) override {
-        cout << "B::Foo" << endl;
-        return true;
+    B(/* args */);
+    ~B();
+    void func() {
+        A a;
+        cout << a.func();
     }
 };
 
-class C : public A<double> {
-public:
-    bool Foo(double input) override {
-        cout << "C::Foo" << endl;
-        return true;
-    }
-};
+B::B(/* args */)
+{
+}
+
+B::~B()
+{
+}
 
 int main() {
-    vector<variant<B, C>> vec;
-
     B b;
-    C c;
-
-    vec.push_back(b);
-    vec.push_back(c);
-
-    for (const auto& element : vec) {
-        visit([](const auto& obj) {
-            obj.Foo(42);
-        }, element);
-    }
-
+    b.func();
     return 0;
 }

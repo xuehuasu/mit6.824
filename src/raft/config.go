@@ -149,8 +149,8 @@ func (cfg *config) checkLogs(i int, m ApplyMsg) (string, bool) {
 		}
 	}
 	_, prevok := cfg.logs[i][m.CommandIndex-1]
+	//DPrintf(false, "checkLogs i %v m.CommandIndex %v m.Command %v log %v\n", i, m.CommandIndex, m.Command, cfg.logs[i][m.CommandIndex-1])
 	cfg.logs[i][m.CommandIndex] = v
-	// DPrintf(true, "set logs cfg.logs[%d][%d] = %v\n", i, m.CommandIndex, v)
 	if m.CommandIndex > cfg.maxIndex {
 		cfg.maxIndex = m.CommandIndex
 	}
@@ -164,7 +164,6 @@ func (cfg *config) applier(i int, applyCh chan ApplyMsg) {
 		if m.CommandValid == false {
 			// ignore other types of ApplyMsg
 		} else {
-			// DPrintf(true, "server recv %v %v %v\n", m.CommandValid, m.CommandIndex, m.Command)
 			cfg.mu.Lock()
 			err_msg, prevok := cfg.checkLogs(i, m)
 			cfg.mu.Unlock()
@@ -172,7 +171,7 @@ func (cfg *config) applier(i int, applyCh chan ApplyMsg) {
 				err_msg = fmt.Sprintf("server %v apply out of order %v", i, m.CommandIndex)
 			}
 			if err_msg != "" {
-				log.Fatalf("1-apply error: %v\n", err_msg)
+				log.Fatalf("2-apply error: %v\n", err_msg)
 				cfg.applyErr[i] = err_msg
 				// keep reading after error so that Raft doesn't block
 				// holding locks...
@@ -204,7 +203,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 			}
 			cfg.mu.Unlock()
 		} else if m.CommandValid && m.CommandIndex > lastApplied {
-			//DPrintf("apply %v lastApplied %v\n", m.CommandIndex, lastApplied)
+			//DPrintf(false, "server %d apply %v lastApplied %v\n", i, m.CommandIndex, lastApplied)
 			cfg.mu.Lock()
 			err_msg, prevok := cfg.checkLogs(i, m)
 			cfg.mu.Unlock()
@@ -212,7 +211,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 				err_msg = fmt.Sprintf("server %v apply out of order %v", i, m.CommandIndex)
 			}
 			if err_msg != "" {
-				log.Fatalf("2-apply error: %v\n", err_msg)
+				log.Fatalf("1-apply error: %v\n", err_msg)
 				cfg.applyErr[i] = err_msg
 				// keep reading after error so that Raft doesn't block
 				// holding locks...
@@ -241,13 +240,6 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 // allocate new outgoing port file names, and a new
 // state persister, to isolate previous instance of
 // this server. since we cannot really kill it.
-// 翻译：
-// 启动或重新启动Raft。
-// 如果已经存在一个，则首先“杀死”它。
-// 分配新的传出端口文件名和新的
-// 状态持久化程序，以隔离先前的实例
-// 这个服务器。因为我们不能真的杀了它。
-
 func (cfg *config) start1(i int, applier func(int, chan ApplyMsg)) {
 	cfg.crash1(i)
 
@@ -451,7 +443,6 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
-		// DPrintf(true, "nCommitted: %v %v %v\n", i, index, cmd1)
 		cfg.mu.Unlock()
 
 		if ok {
@@ -548,13 +539,13 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 				time.Sleep(20 * time.Millisecond)
 			}
 			if retry == false {
-				cfg.t.Fatalf("one(%v) failed to reach agreement-1", cmd)
+				cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 			}
 		} else {
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
-	cfg.t.Fatalf("one(%v) failed to reach agreement-2", cmd)
+	cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 	return -1
 }
 
