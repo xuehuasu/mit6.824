@@ -1,6 +1,8 @@
 package raft
 
-import "time"
+import (
+	"time"
+)
 
 // example code to send a RequestVote RPC to a server.
 // server is the index of the target server in rf.peers[].
@@ -69,7 +71,7 @@ func (rf *Raft) sendVote(server int, args *RequestVoteArgs, votes *int) {
 	if ok {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
-		if term != rf.currentTerm {
+		if term != rf.currentTerm || rf.state != Candidate {
 			return
 		}
 		DPrintf(false, "sendVote lock: %d\n", rf.me)
@@ -77,6 +79,7 @@ func (rf *Raft) sendVote(server int, args *RequestVoteArgs, votes *int) {
 		if reply.Term > rf.currentTerm {
 			rf.currentTerm = reply.Term
 			rf.state = Follower
+			rf.votedFor = server
 			rf.persist()
 			return
 		}
@@ -104,6 +107,9 @@ func (rf *Raft) sendVote(server int, args *RequestVoteArgs, votes *int) {
 func (rf *Raft) sendMsgToAll() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	if rf.state != Leader {
+		return
+	}
 	rf.sendMsgToAllL()
 }
 
@@ -183,7 +189,7 @@ func (rf *Raft) sendMsg(server int, args *AppendEntriesArgs) {
 				}
 				if num > len(rf.peers)/2 {
 					rf.commitIndex = minmatch
-					go rf.commitLog()
+					go rf.commitLog() // 内部会持久化
 				}
 			}
 		} else {
@@ -223,7 +229,7 @@ func (rf *Raft) sendSnapshot(server int, args *InstallSnapshotArgs) {
 		if reply.Term > rf.currentTerm { // 此时它不再是leader，新一轮选举将会在下次心跳开始
 			rf.currentTerm = reply.Term
 			rf.state = Follower
-			rf.votedFor = -1
+			rf.votedFor = server
 			rf.persist()
 		} else {
 			rf.nextIndex[server] = rf.lastIncludedIndex + 1
@@ -248,11 +254,7 @@ func (rf *Raft) AppendEntry(args *AppendEntriesArgs, reply *AppendEntriesReply) 
 		if myTerm != args.PrevLogTerm {
 			reply.Success = false
 		} else {
-			// 更新commitIndex
-			if args.LeaderCommit > rf.commitIndex {
-				rf.commitIndex = args.LeaderCommit
-				go rf.commitLog()
-			}
+
 			myIndex := args.PrevLogIndex
 
 			for i, j := 0, myIndex+1; i < len(args.Entries); i++ {
@@ -261,6 +263,11 @@ func (rf *Raft) AppendEntry(args *AppendEntriesArgs, reply *AppendEntriesReply) 
 			}
 			if rf.log.endIndex() > myIndex+len(args.Entries)+1 {
 				rf.log.Entries = rf.log.cutEntryToIndex(myIndex + len(args.Entries) + 1) //[:idx]
+			}
+			// 更新commitIndex
+			if args.LeaderCommit > rf.commitIndex {
+				rf.commitIndex = args.LeaderCommit
+				go rf.commitLog()
 			}
 			rf.persist()
 			reply.Success = true

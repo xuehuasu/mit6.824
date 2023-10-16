@@ -29,6 +29,7 @@ package raft
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -145,6 +146,7 @@ func (rf *Raft) readPersist(data []byte) {
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 	// Your code here (2D).
 	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	DPrintf(true, "CondInstallSnapshot lock: %d lastIncludedTerm %d me %d lastIncludedIndex %d me %d\n", rf.me, lastIncludedTerm, rf.lastIncludedTerm, lastIncludedIndex, rf.lastIncludedIndex)
 	if lastIncludedIndex >= rf.lastIncludedIndex {
 		rf.lastIncludedIndex = lastIncludedIndex
@@ -157,10 +159,7 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 		rf.commitIndex = lastIncludedIndex
 
 		rf.persist()
-		rf.mu.Unlock()
 		return true
-	} else {
-		rf.mu.Unlock()
 	}
 	return false
 }
@@ -227,6 +226,7 @@ func (rf *Raft) commitLog() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	i := rf.lastApplied + 1
+	rf.commitIndex = int(math.Min(float64(rf.commitIndex), float64(rf.log.endIndex()-1)))
 	for ; i <= rf.commitIndex; i++ {
 		if i <= rf.log.offset() {
 			continue
@@ -236,10 +236,10 @@ func (rf *Raft) commitLog() {
 			Command:      rf.log.getEntry(i).Command,
 			CommandIndex: i,
 		}
-		DPrintf(true, "commitLog lock: %d, apply: %v\n", rf.me, apply)
 		rf.mu.Unlock()
 		rf.applyCh <- apply
 		rf.mu.Lock()
+		DPrintf(true, "commitLog lock: %d, apply: %v\n", rf.me, apply)
 	}
 	rf.lastApplied = rf.commitIndex
 	rf.persist()
@@ -340,7 +340,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-
+	rf.setElectiontime()
 	// start ticker goroutine to start elections
 	go rf.ticker()
 
