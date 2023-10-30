@@ -1,0 +1,23 @@
+begin
+"server PutAppend result:.*": 0.log
+"server applier.*": 1.log
+"commitLog.*": 2.log
+"server PutAppend:.*": 3.log
+"server Get result:.*": 4.log
+"client": 5.log
+"server PutAppend.*": 6.log
+"leader is": 7.log
+"raft ticker lock:.*": 8.log
+"appendLog.*": 9.log
+"CondInstallSnapshot.*": 10.log
+"AppendEntry lock.*": 11.log
+"sendMsg:.*": 12.log
+-E "exit:|start ": 13.log
+"sendSnapshot.*": 14.log
+" Snapshot lock:.": 15.log
+"dosnapshot.*": 16.log
+"persist:": 17.log
+"RPC InstallSnapshot lock": 18.log
+"sendMsg lock: ": 19.log
+"sendVote": 20.log
+"ticker": 21.log
